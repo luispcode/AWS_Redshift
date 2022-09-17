@@ -1,0 +1,226 @@
+-- Qué es la compresión en Redshift?
+Tengo un archivo con X peso y quiero hacer que pese menos sin perder calidad.
+
+Una tabla en reshift que no este comprimida, esta perdiendo todo el poder.
+
+Es una operacion dirigida a las columnas.
+Reduce el tamanio en almacenamiento de los datos reduciendo el I/O.
+Las consultas son mas veloces en una columna comprimida.
+La sentencia que utiliza redshift es la siguiente AL MOMENTO DE CREAR LA TABLA:
+
+CREATE TABLE table_name (column_name data type ENCODE encoding type)
+
+Ejemplo:
+
+CREATE TABLE test_compresion (nombre varchar(30) ENCODE TEXT255)
+
+Compression encodings: 
+(Raw encoding, AZ64 encoding, Byte-dictionary encoding, Delta encoding, LZO encoding
+Mostly encoding
+Runlength encoding
+Text255 and Text32k encodings
+Zstandard encoding)
+
+-- ALGORITMOS DE COMPRENSION:
+
+Codificación RAW (Predeterminada de Redshift)
+Los datos se almacenan descomprimidos y sin formato.
+Tipos da datos: todos.
+Tipo de codificacion por defecto.
+
+Codificación AZ64
+Codificación propia de Amazon (AWS).
+Tipos de dato: smallint, integer, bigint, decimal, date, timestamp, timestamptz.
+Utiliza SIMD (Single Instruction, Multiple Data) para procesamiento paralelo.
+
+Codificación por diccionario de bytes:
+Muy eficaz cuando una columna tiene una cantidad limitada de valores unicos (menos de 256).
+Crea un diccionario en un bloque de redshift de 1MB.
+Tipos de dato: smallint, integer, bigint, decimal, real, double precision, char, varchar, date, timestamp, timestamptz.
+
+Codificación Delta:
+Muy utiles para las columnas con formato fecha y hora.
+Guarda la diferencia entre un registro y el siguiente.
+Tipos de datos: smallint, int, bigint, date, timestamp, decimal.
+Existe Delta de un byte y de dos bytes 8 y 16 respectivamente.
+No se pueden superar estos bytes en la diferencia, de ser asi la codificacion no se aplica.
+El rango de 1 byte abarca desde -127 hasta 127 y el rango de 2 bytes desde -32K hasta 32K.
+
+Codificación LZO:
+Mu util para largas cadenas de texto.
+Funciona para texto libre.
+Tipos de dato: smallint, integer, bigint, decimal, char, varchar, date, timestamp, timestamptz.
+
+Codificación Mostly:
+Se utiliza cuando la mayoría de los
+datos de una columna son menores en
+bits al valor de la columna misma .
+Existe mostly de 8, 16 y 32 bits .
+Tipos de dato : smallint, int, bigint,
+decimal .
+
+Codificación Runlength:
+Reemplaza un valor que se repite de
+manera consecutiva por un valor y por
+un recuento de la cantidad de números
+consecutivos .
+Idea para una tabla en la que los valores
+de datos suelen repetirse de manera
+consecutiva.
+Codificacion
+Codificación Text255 & Text32k:
+Son útiles para comprimir columnas
+VARCHAR en las que se repiten con
+frecuencia las mismas palabras .
+Text255 usa las 245 palabras más
+frecuentes de la columna y crea un
+diccionario .
+Text32k hace lo mismo pero indexa
+palabras hasta tener un diccionario de 32k.
+
+Codificación Zstandard:
+La codificación ZSTD funciona especialmente bien para las columnas
+CHAR Y VARCHAR
+Es muy poco probable que ZSTD
+aumente el uso del disco.
+Tipos de dato: smallint, integer, bigint,
+decimal, real, double, precision, boolean,
+char, varchar, date, timestamp,
+timestamptz.
+
+
+-- Distribución con redshift:
+
+Distribuir carga significa compartir esa
+carga de trabajo de una tabla de manera
+equitativa en los nodos , si no está
+distribuida correctamente unos nodos
+trabajan más que otros , y eso se traduce en
+consultas más lentas .
+
+Estilos de distribución:
+Cuando crea una tabla, puede designar uno de los cuatro estilos de distribución: AUTO, EVEN, KEY o ALL.
+Si no se especifica un estilo de distribución, Amazon Redshift usa la distribución AUTO.
+
+Distribución AUTO:
+Con la distribución AUTO, Amazon Redshift asigna un estilo de distribución óptimo basado en el tamaño de los datos de la tabla. Por ejemplo, Amazon Redshift asigna inicialmente 
+la distribución ALL a una tabla pequeña, a continuación, cambia a una distribución EVEN cuando la tabla crece más. Cuando una tabla cambia de una distribución ALL a EVEN, la utilización 
+del almacenamiento podría cambiar ligeramente. El cambio en la distribución se produce en segundo plano y tarda pocos segundos.
+Cuando se establece DISTSTYLE en AUTO, Amazon Redshift podría cambiar la distribución de los datos de la tabla para que tengan un estilo de distribución basado en KEY.
+Para ver el estilo de distribución aplicado a una tabla, consulte la vista de catálogo del sistema PG_CLASS_INFO. Para obtener más información, consulte Visualización de los estilos de distribución. 
+Si no se especifica un estilo de distribución con la instrucción CREATE TABLE, Amazon Redshift aplica la distribución AUTO.
+
+Distribución EVEN:
+El nodo principal distribuye las filas entre los sectores con un método de turnos rotativos, 
+independientemente de los valores de cualquier columna en particular. La distribución EVEN es 
+adecuada cuando una tabla no participa de combinaciones o cuando no hay una selección clara entre la distribución KEY y la distribución ALL.
+
+Distribución KEY:
+Las filas se distribuyen según los valores de una columna.
+El nodo principal ubica juntos los valores que coinciden en el mismo sector del nodo. 
+Si distribuye un par de tablas en las claves de combinación, el nodo principal ubica juntas 
+las filas en los sectores según los valores de las columnas de combinación para que los valores 
+que coinciden en las columnas que tienen en común se almacenen juntos físicamente.
+
+Distribución ALL:
+Se distribuye una copia de toda la tabla a cada nodo. Mientras que la distribución EVEN o la distribución KEY colocan solo una parte 
+de las filas de la tabla en cada nodo, la distribución ALL garantiza que se coloque cada fila para cada combinación en la que participa la tabla.
+La distribución ALL multiplica el almacenamiento requerido por la cantidad de nodos del clúster
+, por lo que demanda más tiempo para cargar, actualizar o insertar datos en distintas tablas. 
+La distribución ALL es adecuada solo para tablas con movimientos relativamente lentos, 
+es decir tablas que no se actualizan con frecuencia ni de forma generalizada. 
+Dado que el costo de redistribuir tablas pequeñas durante una consulta es bajo, 
+no hay un beneficio significativo para definir tablas de dimensiones pequeñas 
+como DISTSTYLE ALL.
+
+-- llaves de ordenamiento:
+
+Según la llave que utilicemos se realizará nuestra consulta y esto significará cantidad de recurso
+
+Clave de clasificación compuesta (COMPOUND):
+Una clave compuesta se compone de todas las columnas enumeradas en la definición de clave de clasificación, 
+en el orden en que aparecen. Una clave de clasificación compuesta es más útil cuando el filtro de una consulta 
+aplica condiciones, como filtros y combinaciones, que utilizan un prefijo de las claves de clasificación. 
+Los beneficios de rendimiento de la clasificación compuesta disminuyen cuando las consultas dependen solo de 
+columnas de clasificación secundarias, sin hacer referencia a las columnas primarias. COMPOUND es el tipo de 
+clasificación predeterminado
+.
+
+Las claves de ordenación compuestas pueden acelerar las combinaciones, 
+las operaciones GROUP BY y ORDER BY, y las funciones de ventana que usan PARTITION BY y ORDER BY. 
+Por ejemplo, una combinación de combinación, que a menudo es más rápida que una combinación de hash, 
+es factible cuando los datos se distribuyen y clasifican previamente en las columnas de combinación. 
+Las claves de ordenación compuestas también ayudan a mejorar la compresión
+.
+
+A medida que agrega filas a una tabla ordenada que ya contiene datos, 
+la región no ordenada crece, lo que tiene un efecto significativo en el rendimiento. 
+El efecto es mayor cuando la tabla utiliza ordenación intercalada, especialmente cuando 
+las columnas de ordenación incluyen datos que aumentan de manera monótona, como columnas de 
+fecha o marca de tiempo. Debe ejecutar una operación de VACÍO con regularidad, especialmente 
+después de grandes cargas de datos, para volver a ordenar y volver a analizar los datos. 
+Para obtener más información, consulte Administrar el tamaño de la región sin clasificar. 
+Después de pasar la aspiradora para recurrir a los datos, es una buena práctica ejecutar un 
+comando ANALYZE para actualizar los metadatos estadísticos para el planificador de consultas
+.
+
+Clave de ordenación intercalada (INTERLEAVED)
+
+Una clave de ordenación intercalada le otorga el mismo peso a cada columna o subconjunto de 
+columnas en la clave de ordenación. Si hay distintas consultas que usan diferentes columnas 
+para filtros, puede, por lo general, mejorar el rendimiento de esas consultas utilizando un 
+estilo de ordenación intercalada. Cuando una consulta usa predicados restrictivos en las columnas 
+de ordenación secundarias, la ordenación intercalada mejora considerablemente el rendimiento de la 
+consulta, si se la compara con la ordenación compuesta
+.
+
+Artículo de AWS: Choose the best sort key
+To have Amazon Redshift choose the appropriate sort order, specify AUTO for the sort key.
+If recent data is queried most frequently, specify the timestamp column as the leading column for the sort key.
+Queries are more efficient because they can skip entire blocks that fall outside the time range.
+If you do frequent range filtering or equality filtering on one column, specify that column as the sort key.
+Amazon Redshift can skip reading entire blocks of data for that column. It can do so because it tracks 
+the minimum and maximum column values stored on each block and can skip blocks that don’t apply to the predicate range.
+If you frequently join a table, specify the join column as both the sort key and the distribution key.
+Doing this enables the query optimizer to choose a sort merge join instead of a slower hash join. Because the data is already sorted on the join key, the query optimizer can bypass the sort phase of the sort merge join.
+
+
+-- Comando Copy:
+
+Procesamiento masivo en paralelo (MPP)
+Un solo llamado para múltiples archivos.
+Compresión de archivos (Cargar archivos comprimidos)
+Compatible con s3.
+Carga de archivos
+Otorgar permisos al recurso (A través del rol)
+Validar formato de archivos (Debe de estar en UTF-8).
+Verificar longitudes de las columnas.
+¿Existe un delimitador?
+Comprobar el formato de fechas.
+Particionar los datos en distintos archivos.
+
+¿En cuantos archivos debo dividir mis datos?
+Cargar archivos múltiplos del numero de slide por nodo.
+2 slides, 2 nodos -> 4 archivos.
+Recomendación de tamaño: 110 MB por archivo después de la compresión.
+
+Desempeño de la base da datos:
+
+La operación ANALYZE:
+Actualiza los metadatos estadísticos que el planificador
+de consultas usa para seleccionar planes óptimos.
+La operación de Analyze consume muchos
+recursos del sistema , por eso si no han
+cambiado determinado porcentaje de filas
+en la tabla no se ejecuta .
+
+La operación Vacuum(Limpieza):
+Reordena las filas y recupera espacio
+en una tabla especificada o en todas
+las tablas de la base de datos actual .
+
+Tipo de Vacuum :
+o FULL
+o SORT ONLY
+o DELETE ONLY
+o REINDEX 
